@@ -1,29 +1,27 @@
-From fc5ac0d955afce294fe58a20cab8e9dda572de78 Mon Sep 17 00:00:00 2001
+From 358855aa61775b72a8cba0d107286df960b1380c Mon Sep 17 00:00:00 2001
 From: "Richard W.M. Jones" <rjones@redhat.com>
 Date: Tue, 24 Jun 2014 10:00:15 +0100
-Subject: [PATCH 01/10] Don't add rpaths to libraries.
+Subject: [PATCH 1/6] Don't add rpaths to libraries.
 
 ---
- tools/Makefile.shared | 6 +++---
- 1 file changed, 3 insertions(+), 3 deletions(-)
+ tools/Makefile | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
 
-diff --git a/tools/Makefile.shared b/tools/Makefile.shared
-index 2803d78..d6c42bb 100644
---- a/tools/Makefile.shared
-+++ b/tools/Makefile.shared
-@@ -154,9 +154,9 @@ $(call byte_and_opt,ocamlmklib,ocamlmklibconfig.cmo config.cmo \
+diff --git a/tools/Makefile b/tools/Makefile
+index 92d9e99e7..d0b635b06 100644
+--- a/tools/Makefile
++++ b/tools/Makefile
+@@ -156,8 +156,8 @@ $(call byte_and_opt,ocamlmklib,ocamlmklibconfig.cmo config.cmo misc.cmo \
  ocamlmklibconfig.ml: ../config/Makefile Makefile
  	(echo 'let bindir = "$(BINDIR)"'; \
           echo 'let supports_shared_libraries = $(SUPPORTS_SHARED_LIBRARIES)';\
--         echo 'let byteccrpath = "$(BYTECCRPATH)"'; \
--         echo 'let nativeccrpath = "$(NATIVECCRPATH)"'; \
+-         echo 'let default_rpath = "$(RPATH)"'; \
 -         echo 'let mksharedlibrpath = "$(MKSHAREDLIBRPATH)"'; \
-+         echo 'let byteccrpath = ""'; \
-+         echo 'let nativeccrpath = ""'; \
++         echo 'let default_rpath = ""'; \
 +         echo 'let mksharedlibrpath = ""'; \
           echo 'let toolpref = "$(TOOLPREF)"'; \
           sed -n -e 's/^#ml //p' ../config/Makefile) \
          > ocamlmklibconfig.ml
 -- 
-2.9.3
+2.13.2
 

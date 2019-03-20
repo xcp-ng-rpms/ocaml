@@ -4,7 +4,7 @@
 # dynamic linking.
 
 Name:           ocaml
-Version:        4.04.2
+Version:        4.06.1
 Release:        1%{?dist}
 
 Summary:        OCaml compiler and programming environment
@@ -13,23 +13,30 @@ License:        QPL and (LGPLv2+ with exceptions)
 
 URL:            http://www.ocaml.org
 
-Source0:        https://repo.citrite.net:443/ctx-local-contrib/xs-opam/ocaml-4.04.2.tar.gz
+Source0:        https://repo.citrite.net:443/ctx-local-contrib/xs-opam/ocaml-%{version}.tar.xz
 
-Source1:        https://repo.citrite.net:443/ctx-local-contrib/xs-opam/ocaml-4.04-refman-html.tar.gz
-Source2:        https://repo.citrite.net:443/ctx-local-contrib/xs-opam/ocaml-4.04-refman.pdf
-Source3:        https://repo.citrite.net:443/ctx-local-contrib/xs-opam/ocaml-4.04-refman.info.tar.gz
+# IMPORTANT NOTE:
+#
+# These patches are generated from unpacked sources stored in a
+# pagure.io git repository.  If you change the patches here, they will
+# be OVERWRITTEN by the next update.  Instead, request commit access
+# to the pagure project:
+#
+# https://pagure.io/fedora-ocaml
+#
+# Current branch: fedora-28-4.06.0
+#
+# ALTERNATIVELY add a patch to the end of the list (leaving the
+# existing patches unchanged) adding a comment to note that it should
+# be incorporated into the git repo at a later time.
+#
 
-# The first 4 patches come from the fedora 26 package
-# Patches 5-7 are performance backport from the ocaml-4.05 branch
-
+# Fedora-specific downstream patches.
 Patch0001:      0001-Don-t-add-rpaths-to-libraries.patch
 Patch0002:      0002-ocamlbyteinfo-ocamlplugininfo-Useful-utilities-from-.patch
 Patch0003:      0003-configure-Allow-user-defined-C-compiler-flags.patch
-Patch0004:      0004-Don-t-rewrite-Werror.patch
-Patch0005:      0005-PR-7158.patch
-Patch0006:      0006-Backport-863.patch
-Patch0007:      0007-Backport-1069.patch
 
+BuildRequires:  gcc
 BuildRequires:  binutils-devel
 BuildRequires:  ncurses-devel
 BuildRequires:  gdbm-devel
@@ -97,15 +104,6 @@ Requires:       ocaml = %{version}-%{release}
 Source code for OCaml libraries.
 
 
-# %package x11
-# Summary:        X11 support for OCaml
-# Requires:       ocaml-runtime = %{version}-%{release}
-# Requires:       libX11-devel
-
-# %description x11
-# X11 support for OCaml.
-
-
 %package ocamldoc
 Summary:        Documentation generator for OCaml
 Requires:       ocaml = %{version}-%{release}
@@ -113,15 +111,6 @@ Provides:	ocamldoc
 
 %description ocamldoc
 Documentation generator for OCaml.
-
-
-# %package emacs
-# Summary:        Emacs mode for OCaml
-# Requires:       ocaml = %{version}-%{release}
-# Requires:       emacs(bin)
-
-# %description emacs
-# Emacs mode for OCaml.
 
 
 %package docs
@@ -135,8 +124,7 @@ Requires(preun): /sbin/install-info
 OCaml is a high-level, strongly-typed, functional and object-oriented
 programming language from the ML family of languages.
 
-This package contains documentation in PDF and HTML format as well as
-man pages and info files.
+This package contains man pages.
 
 
 %package compiler-libs
@@ -156,9 +144,6 @@ may not be portable between versions.
 
 %prep
 %setup -q -T -b 0 -n %{name}-%{version}
-%setup -q -T -D -a 1 -n %{name}-%{version}
-%setup -q -T -D -a 3 -n %{name}-%{version}
-cp %{SOURCE2} refman.pdf
 %autopatch -p1
 
 
@@ -172,7 +157,8 @@ CFLAGS="$RPM_OPT_FLAGS -fno-strict-aliasing" \
     -x11lib %{_libdir} \
     -x11include %{_includedir} \
     -mandir %{_mandir}/man1 \
-    -no-curses
+    -no-curses \
+    -default-unsafe-string
 $make world
 $make opt
 $make opt.opt
@@ -194,21 +180,6 @@ make install \
      MANDIR=$RPM_BUILD_ROOT%{_mandir}
 perl -pi -e "s|^$RPM_BUILD_ROOT||" $RPM_BUILD_ROOT%{_libdir}/ocaml/ld.conf
 
-# (
-#     # install emacs files
-#     cd emacs;
-#     make install \
-#          BINDIR=$RPM_BUILD_ROOT%{_bindir} \
-#          EMACSDIR=$RPM_BUILD_ROOT%{_datadir}/emacs/site-lisp
-#     make install-ocamltags BINDIR=$RPM_BUILD_ROOT%{_bindir}
-# )
-
-(
-    # install info files
-    mkdir -p $RPM_BUILD_ROOT%{_infodir};
-    cd infoman; cp ocaml*.gz $RPM_BUILD_ROOT%{_infodir}
-)
-
 echo %{version} > $RPM_BUILD_ROOT%{_libdir}/ocaml/fedora-ocaml-release
 
 # Remove rpaths from stublibs .so files.
@@ -224,25 +195,12 @@ find $RPM_BUILD_ROOT -name .ignore -delete
 find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 
 
-%post docs
-/sbin/install-info \
-    --entry="* ocaml: (ocaml).   The OCaml compiler and programming environment" \
-    --section="Programming Languages" \
-    %{_infodir}/%{name}.info \
-    %{_infodir}/dir 2>/dev/null || :
-
-
-%preun docs
-if [ $1 -eq 0 ]; then
-  /sbin/install-info --delete %{_infodir}/%{name}.info %{_infodir}/dir 2>/dev/null || :
-fi
-
-
 %files
 %doc LICENSE
 %{_bindir}/ocaml
 
 %{_bindir}/ocamlbyteinfo
+%{_bindir}/ocamlcmt
 %{_bindir}/ocamldebug
 #%{_bindir}/ocamlplugininfo
 %{_bindir}/ocamlyacc
@@ -311,7 +269,7 @@ fi
 
 
 %files runtime
-%doc README.adoc LICENSE
+%doc README.adoc LICENSE Changes
 %{_bindir}/ocamlrun
 %dir %{_libdir}/ocaml
 %{_libdir}/ocaml/VERSION
@@ -326,19 +284,11 @@ fi
 %{_libdir}/ocaml/threads/*.cmi
 %{_libdir}/ocaml/threads/*.cma
 %{_libdir}/ocaml/fedora-ocaml-release
-%exclude %{_libdir}/ocaml/graphicsX11.cmi
 
 
 %files source
 %doc LICENSE
 %{_libdir}/ocaml/*.ml
-
-
-# %files x11
-# %doc LICENSE
-# %{_libdir}/ocaml/graphicsX11.cmi
-# %{_libdir}/ocaml/graphicsX11.mli
-
 
 %files ocamldoc
 %doc LICENSE
@@ -348,21 +298,14 @@ fi
 
 
 %files docs
-%doc refman.pdf htmlman
-%{_infodir}/*
 %{_mandir}/man1/*
 %{_mandir}/man3/*
-
-
-# %files emacs
-# %doc emacs/README
-# %{_datadir}/emacs/site-lisp/*
-# %{_bindir}/ocamltags
 
 
 %files compiler-libs
 %doc LICENSE
 %dir %{_libdir}/ocaml/compiler-libs
+%{_libdir}/ocaml/compiler-libs/*.mli
 %{_libdir}/ocaml/compiler-libs/*.cmi
 %{_libdir}/ocaml/compiler-libs/*.cmo
 %{_libdir}/ocaml/compiler-libs/*.cma
@@ -373,12 +316,57 @@ fi
 
 
 %changelog
-* Fri Jul 14 2017 Marcello Seri <marcello.seri@citrix.com> - 4.04.2-1
-- Update ocaml to 4.04.2
-- Backport Mutex and Event perf improvement
-- Disable X11 and emacs libraries build
-- Remove support for unnecessary architectures
-                 
+* Wed Feb 28 2018 Marcello Seri <marcello.seri@citrix.com> - 4.06.0-6
+- Use unsafe-strings by default
+
+* Sun Feb 25 2018 Richard W.M. Jones <rjones@redhat.com> - 4.06.0-5
+- Add another couple of RISC-V patches from nojb branch.
+
+* Sat Feb 24 2018 Richard W.M. Jones <rjones@redhat.com> - 4.06.0-4
+- Remove mesa* dependencies which are not needed.
+
+* Thu Feb 08 2018 Fedora Release Engineering <releng@fedoraproject.org> - 4.06.0-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_28_Mass_Rebuild
+
+* Wed Jan 10 2018 Richard W.M. Jones <rjones@redhat.com> - 4.06.0-2
+- Drop non-free documentation (RHBZ#1530647).
+
+* Mon Nov 06 2017 Richard W.M. Jones <rjones@redhat.com> - 4.06.0-1
+- New upstream version 4.06.0.
+- Enable parallel builds again.
+- Rebase patches.
+- New binary ocamlcmt.
+
+* Wed Sep 13 2017 Richard W.M. Jones <rjones@redhat.com> - 4.05.0-4
+- Add final upstream fix for aarch64/binutils relocation problems.
+  https://github.com/ocaml/ocaml/pull/1330
+
+* Wed Sep 06 2017 Richard W.M. Jones <rjones@redhat.com> - 4.05.0-3
+- Include interim fix for aarch64/binutils relocation problems.
+
+* Sat Aug 05 2017 Richard W.M. Jones <rjones@redhat.com> - 4.05.0-2
+- New upstream version 4.05.0.
+- Disable parallel builds for now.
+- *.mli files are now included in ocaml-compiler-libs.
+- Add possible fix for aarch64 with new binutils.
+
+* Sat Aug 05 2017 Richard W.M. Jones <rjones@redhat.com> - 4.04.2-4
+- Disable tests on aarch64 (https://caml.inria.fr/mantis/view.php?id=7602)
+
+* Thu Aug 03 2017 Fedora Release Engineering <releng@fedoraproject.org> - 4.04.2-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Binutils_Mass_Rebuild
+
+* Thu Jul 27 2017 Fedora Release Engineering <releng@fedoraproject.org> - 4.04.2-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Mass_Rebuild
+
+* Mon Jun 26 2017 Richard W.M. Jones <rjones@redhat.com> - 4.04.2-1
+- New upstream version 4.04.2.
+- Fix: ocaml: Insufficient sanitisation allows privilege escalation for
+  setuid binaries (CVE-2017-9772) (RHBZ#1464920).
+
+* Wed May 10 2017 Richard W.M. Jones <rjones@redhat.com> - 4.04.1-1
+- New upstream version 4.04.1.
+
 * Sat Feb 11 2017 Fedora Release Engineering <releng@fedoraproject.org> - 4.04.0-9
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_26_Mass_Rebuild
 

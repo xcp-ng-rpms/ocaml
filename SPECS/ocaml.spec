@@ -4,8 +4,8 @@
 # dynamic linking.
 
 Name:           ocaml
-Version:        4.06.1
-Release:        1%{?dist}
+Version:        4.07.1
+Release:        2%{?dist}
 
 Summary:        OCaml compiler and programming environment
 
@@ -13,7 +13,15 @@ License:        QPL and (LGPLv2+ with exceptions)
 
 URL:            http://www.ocaml.org
 
-Source0:        https://repo.citrite.net:443/ctx-local-contrib/xs-opam/ocaml-%{version}.tar.xz
+
+Source0: https://repo.citrite.net:443/ctx-local-contrib/xs-opam/ocaml-4.07.1.tar.gz
+Patch1: SOURCES/ocaml/0001-Don-t-add-rpaths-to-libraries.patch
+Patch2: SOURCES/ocaml/0002-ocamlbyteinfo-ocamlplugininfo-Useful-utilities-from-.patch
+Patch3: SOURCES/ocaml/0003-configure-Allow-user-defined-C-compiler-flags.patch
+Patch4: SOURCES/ocaml/CA-308206.patch
+
+
+
 
 # IMPORTANT NOTE:
 #
@@ -32,9 +40,6 @@ Source0:        https://repo.citrite.net:443/ctx-local-contrib/xs-opam/ocaml-%{v
 #
 
 # Fedora-specific downstream patches.
-Patch0001:      0001-Don-t-add-rpaths-to-libraries.patch
-Patch0002:      0002-ocamlbyteinfo-ocamlplugininfo-Useful-utilities-from-.patch
-Patch0003:      0003-configure-Allow-user-defined-C-compiler-flags.patch
 
 BuildRequires:  gcc
 BuildRequires:  binutils-devel
@@ -101,13 +106,12 @@ Summary:        Source code for OCaml libraries
 Requires:       ocaml = %{version}-%{release}
 
 %description source
-Source code for OCaml libraries.
 
 
 %package ocamldoc
 Summary:        Documentation generator for OCaml
 Requires:       ocaml = %{version}-%{release}
-Provides:	ocamldoc
+Provides:       ocamldoc
 
 %description ocamldoc
 Documentation generator for OCaml.
@@ -157,8 +161,7 @@ CFLAGS="$RPM_OPT_FLAGS -fno-strict-aliasing" \
     -x11lib %{_libdir} \
     -x11include %{_includedir} \
     -mandir %{_mandir}/man1 \
-    -no-curses \
-    -default-unsafe-string
+    -no-curses
 $make world
 $make opt
 $make opt.opt
@@ -202,6 +205,8 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_bindir}/ocamlbyteinfo
 %{_bindir}/ocamlcmt
 %{_bindir}/ocamldebug
+%{_bindir}/ocaml-instr-graph
+%{_bindir}/ocaml-instr-report
 #%{_bindir}/ocamlplugininfo
 %{_bindir}/ocamlyacc
 
@@ -271,12 +276,16 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %files runtime
 %doc README.adoc LICENSE Changes
 %{_bindir}/ocamlrun
+%{_bindir}/ocamlrund
+%{_bindir}/ocamlruni
 %dir %{_libdir}/ocaml
 %{_libdir}/ocaml/VERSION
 %{_libdir}/ocaml/*.cmo
 %{_libdir}/ocaml/*.cmi
 %{_libdir}/ocaml/*.cma
 %{_libdir}/ocaml/stublibs
+%{_libdir}/ocaml/target_camlheaderd
+%{_libdir}/ocaml/target_camlheaderi
 %dir %{_libdir}/ocaml/vmthreads
 %{_libdir}/ocaml/vmthreads/*.cmi
 %{_libdir}/ocaml/vmthreads/*.cma
@@ -316,6 +325,14 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 
 
 %changelog
+* Mon Jan 28 2019 Christian Lindig <christian.lindig@citrix.com> - 4.07.1-2
+- Add CA-308206.patch : Thread.delay must not block signal delivery. This
+  changes it back to the OCaml 4.06 runtime implementation. See also
+  https://caml.inria.fr/mantis/view.php?id=7903
+
+* Wed Nov 28 2018 Christian Lindig <christian.lindig@citrix.com> - 4.07.1-1
+- Use OCaml 4.07.1
+
 * Wed Feb 28 2018 Marcello Seri <marcello.seri@citrix.com> - 4.06.0-6
 - Use unsafe-strings by default
 

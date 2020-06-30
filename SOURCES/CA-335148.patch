@@ -1,0 +1,40 @@
+From 20ddf1572914ee7fd4580f0937935b8d8457a7fb Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Edwin=20T=C3=B6r=C3=B6k?= <edvin.torok@citrix.com>
+Date: Mon, 24 Feb 2020 10:56:06 +0000
+Subject: [PATCH] CA-335148: backport STACK_PROBE_SIZE fix
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This backports the STACK_PROBE_SIZE fix from
+
+commit 8b20b69a16bc11f277c514e81de8c92fe83293f5
+Author: Stephen Dolan <sdolan@janestreet.com>
+Date:   Tue May 14 15:36:21 2019 +0100
+
+    Fix stack overflow detection with systhreads
+
+Linux only allocates a 4k guard page beyond the stack, trying to probe
+32k into the stack might hit other memory.
+
+Signed-off-by: Edwin Török <edvin.torok@citrix.com>
+---
+ runtime/amd64.S | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/runtime/amd64.S b/runtime/amd64.S
+index 1a024283e..e85f3d30b 100644
+--- a/runtime/amd64.S
++++ b/runtime/amd64.S
+@@ -265,7 +265,7 @@
+ #else
+ #  define PREPARE_FOR_C_CALL
+ #  define CLEANUP_AFTER_C_CALL
+-#  define STACK_PROBE_SIZE $32768
++#  define STACK_PROBE_SIZE $4096
+ #endif
+ 
+ /* Registers holding arguments of C functions. */
+-- 
+2.20.1
+

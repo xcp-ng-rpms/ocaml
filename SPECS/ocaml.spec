@@ -3,8 +3,26 @@
 # architectures.  A further subset of architectures support native
 # dynamic linking.
 
+%global native_compiler 1
+%global natdynlink 1
+
+# These are all the architectures that the tests run on.  The tests
+# take a long time to run, so don't run them on slow machines.
+%global test_arches aarch64 %{power64} x86_64
+%global test_arches aarch64 %{power64}
+# These are the architectures for which the tests must pass otherwise
+# the build will fail.
+#%global test_arches_required aarch64 ppc64le x86_64
+%global test_arches_required NONE
+
+# Architectures where parallel builds fail.
+#%global no_parallel_build_arches aarch64
+
+%global rcver %{nil}
+#global rcver +rc2
+
 Name:           ocaml
-Version:        4.07.1
+Version:        4.08.1
 Release:        2%{?dist}
 
 Summary:        OCaml compiler and programming environment
@@ -14,11 +32,14 @@ License:        QPL and (LGPLv2+ with exceptions)
 URL:            http://www.ocaml.org
 
 
-Source0: https://repo.citrite.net:443/ctx-local-contrib/xs-opam/ocaml-4.07.1.tar.gz
+Source0: https://repo.citrite.net/ctx-local-contrib/xs-opam/ocaml-4.08.1.tar.gz
 Patch1: SOURCES/ocaml/0001-Don-t-add-rpaths-to-libraries.patch
-Patch2: SOURCES/ocaml/0002-ocamlbyteinfo-ocamlplugininfo-Useful-utilities-from-.patch
-Patch3: SOURCES/ocaml/0003-configure-Allow-user-defined-C-compiler-flags.patch
-Patch4: SOURCES/ocaml/CA-308206.patch
+Patch2: SOURCES/ocaml/0002-configure-Allow-user-defined-C-compiler-flags.patch
+Patch3: SOURCES/ocaml/0003-configure-Remove-incorrect-assumption-about-cross-co.patch
+Patch4: SOURCES/ocaml/0004-Add-RISC-V-backend.patch
+Patch5: SOURCES/ocaml/0005-riscv-Emit-debug-info.patch
+Patch6: SOURCES/ocaml/CA-308206.patch
+Patch7: SOURCES/ocaml/CA-335148.patch
 
 
 
@@ -32,7 +53,7 @@ Patch4: SOURCES/ocaml/CA-308206.patch
 #
 # https://pagure.io/fedora-ocaml
 #
-# Current branch: fedora-28-4.06.0
+# Current branch: fedora-32-4.08.1
 #
 # ALTERNATIVELY add a patch to the end of the list (leaving the
 # existing patches unchanged) adding a comment to note that it should
@@ -40,14 +61,17 @@ Patch4: SOURCES/ocaml/CA-308206.patch
 #
 
 # Fedora-specific downstream patches.
+# Out of tree patch for RISC-V support.
+# https://github.com/nojb/riscv-ocaml
 
 BuildRequires:  gcc
+BuildRequires:  autoconf
 BuildRequires:  binutils-devel
 BuildRequires:  ncurses-devel
 BuildRequires:  gdbm-devel
-BuildRequires:  emacs
-# BuildRequires:  gawk
+BuildRequires:  gawk
 BuildRequires:  perl
+# Don't build graphics libraries
 # BuildRequires:  util-linux
 # BuildRequires:  libICE-devel
 # BuildRequires:  libSM-devel
@@ -58,8 +82,6 @@ BuildRequires:  perl
 # BuildRequires:  libXmu-devel
 # BuildRequires:  libXrender-devel
 # BuildRequires:  libXt-devel
-# BuildRequires:  mesa-libGL-devel
-# BuildRequires:  mesa-libGLU-devel
 BuildRequires:  chrpath
 
 Requires:       gcc
@@ -108,10 +130,19 @@ Requires:       ocaml = %{version}-%{release}
 %description source
 
 
+%package x11
+Summary:        X11 support for OCaml
+Requires:       ocaml-runtime = %{version}-%{release}
+Requires:       libX11-devel
+
+%description x11
+X11 support for OCaml.
+
+
 %package ocamldoc
 Summary:        Documentation generator for OCaml
 Requires:       ocaml = %{version}-%{release}
-Provides:       ocamldoc
+Provides:	ocamldoc
 
 %description ocamldoc
 Documentation generator for OCaml.
@@ -120,8 +151,6 @@ Documentation generator for OCaml.
 %package docs
 Summary:        Documentation for OCaml
 Requires:       ocaml = %{version}-%{release}
-Requires(post): /sbin/install-info
-Requires(preun): /sbin/install-info
 
 
 %description docs
@@ -147,49 +176,55 @@ may not be portable between versions.
 
 
 %prep
-%setup -q -T -b 0 -n %{name}-%{version}
+%setup -q -T -b 0 -n %{name}-%{version}%{rcver}
 %autopatch -p1
+# Patches touch configure.ac, so rebuild it:
+autoconf --force
 
 
 %build
+%ifnarch %{no_parallel_build_arches}
 make="make %{?_smp_mflags}"
+%else
+unset MAKEFLAGS
+make=make
+%endif
 
-CFLAGS="$RPM_OPT_FLAGS -fno-strict-aliasing" \
-./configure \
-    -bindir %{_bindir} \
-    -libdir %{_libdir}/ocaml \
-    -x11lib %{_libdir} \
-    -x11include %{_includedir} \
-    -mandir %{_mandir}/man1 \
-    -no-curses
+# We set --libdir to the unusual directory because we want OCaml to
+# install its libraries and other files into a subdirectory.
+#
+# Force --host because of:
+# https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/thread/2O4HBOK6PTQZAFAVIRDVMZGG2PYB2QHM/
+%configure \
+    --libdir=%{_libdir}/ocaml \
+    --host=`./config/gnu/config.guess`
 $make world
+%if %{native_compiler}
 $make opt
 $make opt.opt
-# make -C emacs ocamltags
+%endif
 
-# Currently these tools are supplied by Debian, but are expected
-# to go upstream at some point.
-includes="-nostdlib -I stdlib -I utils -I parsing -I typing -I bytecomp -I asmcomp -I driver -I otherlibs/unix -I otherlibs/str -I otherlibs/dynlink"
-boot/ocamlrun ./ocamlc $includes dynlinkaux.cmo ocamlbyteinfo.ml -o ocamlbyteinfo
-# ocamlplugininfo doesn't compile because it needs 'dynheader' (type
-# decl) and I have no idea where that comes from
-#cp otherlibs/dynlink/natdynlink.ml .
-#boot/ocamlrun ./ocamlopt $includes unix.cmxa str.cmxa natdynlink.ml ocamlplugininfo.ml -o ocamlplugininfo
+
+%check
+%ifarch %{test_arches}
+cd testsuite
+
+%ifarch %{test_arches_required}
+make -j1 all
+%else
+make -j1 all ||:
+%endif
+%endif
+
 
 %install
-make install \
-     BINDIR=$RPM_BUILD_ROOT%{_bindir} \
-     LIBDIR=$RPM_BUILD_ROOT%{_libdir}/ocaml \
-     MANDIR=$RPM_BUILD_ROOT%{_mandir}
+make install DESTDIR=$RPM_BUILD_ROOT
 perl -pi -e "s|^$RPM_BUILD_ROOT||" $RPM_BUILD_ROOT%{_libdir}/ocaml/ld.conf
 
 echo %{version} > $RPM_BUILD_ROOT%{_libdir}/ocaml/fedora-ocaml-release
 
 # Remove rpaths from stublibs .so files.
 chrpath --delete $RPM_BUILD_ROOT%{_libdir}/ocaml/stublibs/*.so
-
-install -m 0755 ocamlbyteinfo $RPM_BUILD_ROOT%{_bindir}
-#install -m 0755 ocamlplugininfo $RPM_BUILD_ROOT%{_bindir}
 
 find $RPM_BUILD_ROOT -name .ignore -delete
 
@@ -202,12 +237,10 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %doc LICENSE
 %{_bindir}/ocaml
 
-%{_bindir}/ocamlbyteinfo
 %{_bindir}/ocamlcmt
 %{_bindir}/ocamldebug
 %{_bindir}/ocaml-instr-graph
 %{_bindir}/ocaml-instr-report
-#%{_bindir}/ocamlplugininfo
 %{_bindir}/ocamlyacc
 
 # symlink to either .byte or .opt version
@@ -232,6 +265,7 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_bindir}/ocamloptp.byte
 %{_bindir}/ocamlprof.byte
 
+%if %{native_compiler}
 # native code versions
 %{_bindir}/ocamlc.opt
 %{_bindir}/ocamlcp.opt
@@ -242,10 +276,13 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_bindir}/ocamlobjinfo.opt
 %{_bindir}/ocamloptp.opt
 %{_bindir}/ocamlprof.opt
+%endif
 
+%if %{native_compiler}
 %{_bindir}/ocamlopt
 %{_bindir}/ocamlopt.byte
 %{_bindir}/ocamlopt.opt
+%endif
 
 #%{_libdir}/ocaml/addlabels
 #%{_libdir}/ocaml/scrapelabels
@@ -256,21 +293,28 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_libdir}/ocaml/ld.conf
 %{_libdir}/ocaml/Makefile.config
 %{_libdir}/ocaml/*.a
+%if %{natdynlink}
 %{_libdir}/ocaml/*.cmxs
+%endif
+%if %{native_compiler}
 %{_libdir}/ocaml/*.cmxa
 %{_libdir}/ocaml/*.cmx
 %{_libdir}/ocaml/*.o
 %{_libdir}/ocaml/libasmrun_shared.so
+%endif
 %{_libdir}/ocaml/*.mli
 %{_libdir}/ocaml/libcamlrun_shared.so
 %{_libdir}/ocaml/objinfo_helper
 %{_libdir}/ocaml/vmthreads/*.mli
 %{_libdir}/ocaml/vmthreads/*.a
+%{_libdir}/ocaml/threads/*.mli
+%if %{native_compiler}
 %{_libdir}/ocaml/threads/*.a
 %{_libdir}/ocaml/threads/*.cmxa
 %{_libdir}/ocaml/threads/*.cmx
+%endif
 %{_libdir}/ocaml/caml
-%exclude %{_libdir}/ocaml/graphicsX11.mli
+# %exclude %{_libdir}/ocaml/graphicsX11.mli
 
 
 %files runtime
@@ -293,11 +337,19 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_libdir}/ocaml/threads/*.cmi
 %{_libdir}/ocaml/threads/*.cma
 %{_libdir}/ocaml/fedora-ocaml-release
+# %exclude %{_libdir}/ocaml/graphicsX11.cmi
 
 
 %files source
 %doc LICENSE
 %{_libdir}/ocaml/*.ml
+
+
+%files x11
+%doc LICENSE
+# %{_libdir}/ocaml/graphicsX11.cmi
+# %{_libdir}/ocaml/graphicsX11.mli
+
 
 %files ocamldoc
 %doc LICENSE
@@ -318,23 +370,60 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_libdir}/ocaml/compiler-libs/*.cmi
 %{_libdir}/ocaml/compiler-libs/*.cmo
 %{_libdir}/ocaml/compiler-libs/*.cma
+%if %{native_compiler}
 %{_libdir}/ocaml/compiler-libs/*.a
 %{_libdir}/ocaml/compiler-libs/*.cmxa
 %{_libdir}/ocaml/compiler-libs/*.cmx
 %{_libdir}/ocaml/compiler-libs/*.o
+%endif
 
 
 %changelog
-* Mon Jan 28 2019 Christian Lindig <christian.lindig@citrix.com> - 4.07.1-2
-- Add CA-308206.patch : Thread.delay must not block signal delivery. This
-  changes it back to the OCaml 4.06 runtime implementation. See also
-  https://caml.inria.fr/mantis/view.php?id=7903
+* Fri Aug 16 2019 Richard W.M. Jones <rjones@redhat.com> - 4.08.1-1
+- OCaml 4.08.1 final.
 
-* Wed Nov 28 2018 Christian Lindig <christian.lindig@citrix.com> - 4.07.1-1
-- Use OCaml 4.07.1
+* Tue Jul 30 2019 Richard W.M. Jones <rjones@redhat.com> - 4.08.1-0.rc2.1
+- OCaml 4.08.1+rc2.
+- Include fix for miscompilation of off_t on 32 bit architectures.
 
-* Wed Feb 28 2018 Marcello Seri <marcello.seri@citrix.com> - 4.06.0-6
-- Use unsafe-strings by default
+* Thu Jul 25 2019 Fedora Release Engineering <releng@fedoraproject.org> - 4.08.0-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_31_Mass_Rebuild
+
+* Thu Jun 27 2019 Richard W.M. Jones <rjones@redhat.com> - 4.08.0-1
+- OCaml 4.08.0 (RHBZ#1673688).
+
+* Fri Apr 26 2019 Richard W.M. Jones <rjones@redhat.com> - 4.08.0-0.beta3.1
+- OCaml 4.08.0 beta 3 (RHBZ#1673688).
+- emacs subpackage has been dropped (from upstream):
+  https://github.com/ocaml/ocaml/pull/2078#issuecomment-443322613
+  https://github.com/Chris00/caml-mode
+- Remove ocamlbyteinfo and ocamlpluginfo, neither can be compiled.
+- Disable tests on all architectures, temporarily hopefully.
+- Package threads/*.mli files.
+
+* Fri Feb 01 2019 Fedora Release Engineering <releng@fedoraproject.org> - 4.07.0-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_30_Mass_Rebuild
+
+* Fri Aug 17 2018 Richard W.M. Jones <rjones@redhat.com> - 4.07.0-3
+- Bootstrap from previously build Fedora compiler by default.
+
+* Fri Jul 13 2018 Fedora Release Engineering <releng@fedoraproject.org> - 4.07.0-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_29_Mass_Rebuild
+
+* Wed Jul 11 2018 Richard W.M. Jones <rjones@redhat.com> - 4.07.0-1
+- OCaml 4.07.0 (RHBZ#1536734).
+
+* Tue Jun 26 2018 Richard W.M. Jones <rjones@redhat.com> - 4.07.0-0.rc1.3
+- Enable emacs again on riscv64.
+
+* Tue Jun 19 2018 Richard W.M. Jones <rjones@redhat.com> - 4.07.0-0.rc1.2
+- OCaml 4.07.0-rc1 (RHBZ#1536734).
+
+* Tue Jun  5 2018 Richard W.M. Jones <rjones@redhat.com> - 4.07.0-0.beta2.1
+- Add RISC-V patch to add debuginfo (DWARF) generation.
+
+* Thu Apr 26 2018 Richard W.M. Jones <rjones@redhat.com> - 4.07.0-0.beta2.0
+- OCaml 4.07.0-beta2 (RHBZ#1536734).
 
 * Sun Feb 25 2018 Richard W.M. Jones <rjones@redhat.com> - 4.06.0-5
 - Add another couple of RISC-V patches from nojb branch.

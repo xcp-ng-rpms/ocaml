@@ -9,20 +9,19 @@
 # These are all the architectures that the tests run on.  The tests
 # take a long time to run, so don't run them on slow machines.
 %global test_arches aarch64 %{power64} x86_64
-%global test_arches aarch64 %{power64}
 # These are the architectures for which the tests must pass otherwise
 # the build will fail.
-#%global test_arches_required aarch64 ppc64le x86_64
+#global test_arches_required aarch64 ppc64le x86_64
 %global test_arches_required NONE
 
 # Architectures where parallel builds fail.
-#%global no_parallel_build_arches aarch64
+#global no_parallel_build_arches aarch64
 
+#global rcver +beta1
 %global rcver %{nil}
-#global rcver +rc2
 
 Name:           ocaml
-Version:        4.08.1
+Version:        4.10.0
 Release:        2%{?dist}
 
 Summary:        OCaml compiler and programming environment
@@ -31,18 +30,7 @@ License:        QPL and (LGPLv2+ with exceptions)
 
 URL:            http://www.ocaml.org
 
-
-Source0: https://repo.citrite.net/ctx-local-contrib/xs-opam/ocaml-4.08.1.tar.gz
-Patch1: SOURCES/ocaml/0001-Don-t-add-rpaths-to-libraries.patch
-Patch2: SOURCES/ocaml/0002-configure-Allow-user-defined-C-compiler-flags.patch
-Patch3: SOURCES/ocaml/0003-configure-Remove-incorrect-assumption-about-cross-co.patch
-Patch4: SOURCES/ocaml/0004-Add-RISC-V-backend.patch
-Patch5: SOURCES/ocaml/0005-riscv-Emit-debug-info.patch
-Patch6: SOURCES/ocaml/CA-308206.patch
-Patch7: SOURCES/ocaml/CA-335148.patch
-
-
-
+Source0:        http://caml.inria.fr/pub/distrib/ocaml-4.10/ocaml-%{version}%{rcver}.tar.xz
 
 # IMPORTANT NOTE:
 #
@@ -53,7 +41,7 @@ Patch7: SOURCES/ocaml/CA-335148.patch
 #
 # https://pagure.io/fedora-ocaml
 #
-# Current branch: fedora-32-4.08.1
+# Current branch: fedora-32-4.10.0
 #
 # ALTERNATIVELY add a patch to the end of the list (leaving the
 # existing patches unchanged) adding a comment to note that it should
@@ -61,9 +49,18 @@ Patch7: SOURCES/ocaml/CA-335148.patch
 #
 
 # Fedora-specific downstream patches.
+Patch0001:      0001-Don-t-add-rpaths-to-libraries.patch
+Patch0002:      0002-configure-Allow-user-defined-C-compiler-flags.patch
+Patch0003:      0003-configure-Remove-incorrect-assumption-about-cross-co.patch
+Patch0004:      0004-Remove-configure-from-.gitattributes.patch
 # Out of tree patch for RISC-V support.
 # https://github.com/nojb/riscv-ocaml
+# Resets the version number back to 4.09.0.
+Patch0005:      0005-Add-riscv64-backend.patch
 
+# XS/XCP-ng: are patches CA-308206.patch and CA-335148.patch from previous package needed?
+
+BuildRequires:  git
 BuildRequires:  gcc
 BuildRequires:  autoconf
 BuildRequires:  binutils-devel
@@ -71,20 +68,18 @@ BuildRequires:  ncurses-devel
 BuildRequires:  gdbm-devel
 BuildRequires:  gawk
 BuildRequires:  perl
-# Don't build graphics libraries
-# BuildRequires:  util-linux
-# BuildRequires:  libICE-devel
-# BuildRequires:  libSM-devel
-# BuildRequires:  libX11-devel
-# BuildRequires:  libXaw-devel
-# BuildRequires:  libXext-devel
-# BuildRequires:  libXft-devel
-# BuildRequires:  libXmu-devel
-# BuildRequires:  libXrender-devel
-# BuildRequires:  libXt-devel
+# XS/XCP-ng: Is util-linux still needed since graphics support was dropped?
+# XS/XCP-ng: Previous build in XS/XCP-ng did disable that BR
+BuildRequires:  util-linux
+# XS/XCP-ng: annocheck not available
+#BuildRequires:  /usr/bin/annocheck
 BuildRequires:  chrpath
 
+# ocamlopt runs gcc to link binaries.  Because Fedora includes
+# hardening flags automatically, redhat-rpm-config is also required.
+# XS/XCP-ng: Is that true in our environment?
 Requires:       gcc
+Requires:       redhat-rpm-config
 
 # Because we pass -c flag to ocaml-find-requires (to avoid circular
 # dependencies) we also have to explicitly depend on the right version
@@ -128,15 +123,7 @@ Summary:        Source code for OCaml libraries
 Requires:       ocaml = %{version}-%{release}
 
 %description source
-
-
-%package x11
-Summary:        X11 support for OCaml
-Requires:       ocaml-runtime = %{version}-%{release}
-Requires:       libX11-devel
-
-%description x11
-X11 support for OCaml.
+Source code for OCaml libraries.
 
 
 %package ocamldoc
@@ -176,8 +163,7 @@ may not be portable between versions.
 
 
 %prep
-%setup -q -T -b 0 -n %{name}-%{version}%{rcver}
-%autopatch -p1
+%autosetup -S git -n %{name}-%{version}%{rcver}
 # Patches touch configure.ac, so rebuild it:
 autoconf --force
 
@@ -195,9 +181,18 @@ make=make
 #
 # Force --host because of:
 # https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/thread/2O4HBOK6PTQZAFAVIRDVMZGG2PYB2QHM/
+# (see also https://github.com/ocaml/ocaml/issues/8647)
+#
+# OC_CFLAGS/OC_LDFLAGS control what flags OCaml passes to the linker
+# when doing final linking of OCaml binaries.  Setting these is
+# necessary to ensure that generated binaries have Fedora hardening
+# features.
+# XS/XCP-ng: is that right in our environment?
 %configure \
+    OC_CFLAGS="$CFLAGS" \
+    OC_LDFLAGS="$LDFLAGS" \
     --libdir=%{_libdir}/ocaml \
-    --host=`./config/gnu/config.guess`
+    --host=`./build-aux/config.guess`
 $make world
 %if %{native_compiler}
 $make opt
@@ -206,6 +201,16 @@ $make opt.opt
 
 
 %check
+%ifarch %{ocaml_native_compiler}
+# For information only, compile a binary and dump the annocheck data
+# from it.  Useful so we know if hardening is being enabled, but don't
+# fail because not every hardening feature can be enabled here.
+# XS/XCP-ng: FIXME
+echo 'print_endline "hello, world"' > hello.ml
+./ocamlopt.opt -verbose -I stdlib hello.ml -o hello ||:
+annocheck -v hello ||:
+%endif
+
 %ifarch %{test_arches}
 cd testsuite
 
@@ -251,7 +256,6 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_bindir}/ocamlmklib
 %{_bindir}/ocamlmktop
 %{_bindir}/ocamlobjinfo
-%{_bindir}/ocamloptp
 %{_bindir}/ocamlprof
 
 # bytecode versions
@@ -262,7 +266,6 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_bindir}/ocamlmklib.byte
 %{_bindir}/ocamlmktop.byte
 %{_bindir}/ocamlobjinfo.byte
-%{_bindir}/ocamloptp.byte
 %{_bindir}/ocamlprof.byte
 
 %if %{native_compiler}
@@ -274,7 +277,6 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_bindir}/ocamlmklib.opt
 %{_bindir}/ocamlmktop.opt
 %{_bindir}/ocamlobjinfo.opt
-%{_bindir}/ocamloptp.opt
 %{_bindir}/ocamlprof.opt
 %endif
 
@@ -305,8 +307,6 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_libdir}/ocaml/*.mli
 %{_libdir}/ocaml/libcamlrun_shared.so
 %{_libdir}/ocaml/objinfo_helper
-%{_libdir}/ocaml/vmthreads/*.mli
-%{_libdir}/ocaml/vmthreads/*.a
 %{_libdir}/ocaml/threads/*.mli
 %if %{native_compiler}
 %{_libdir}/ocaml/threads/*.a
@@ -314,7 +314,6 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_libdir}/ocaml/threads/*.cmx
 %endif
 %{_libdir}/ocaml/caml
-# %exclude %{_libdir}/ocaml/graphicsX11.mli
 
 
 %files runtime
@@ -327,28 +326,18 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_libdir}/ocaml/*.cmo
 %{_libdir}/ocaml/*.cmi
 %{_libdir}/ocaml/*.cma
+%{_libdir}/ocaml/camlheaderd
+%{_libdir}/ocaml/camlheaderi
 %{_libdir}/ocaml/stublibs
-%{_libdir}/ocaml/target_camlheaderd
-%{_libdir}/ocaml/target_camlheaderi
-%dir %{_libdir}/ocaml/vmthreads
-%{_libdir}/ocaml/vmthreads/*.cmi
-%{_libdir}/ocaml/vmthreads/*.cma
 %dir %{_libdir}/ocaml/threads
 %{_libdir}/ocaml/threads/*.cmi
 %{_libdir}/ocaml/threads/*.cma
 %{_libdir}/ocaml/fedora-ocaml-release
-# %exclude %{_libdir}/ocaml/graphicsX11.cmi
 
 
 %files source
 %doc LICENSE
 %{_libdir}/ocaml/*.ml
-
-
-%files x11
-%doc LICENSE
-# %{_libdir}/ocaml/graphicsX11.cmi
-# %{_libdir}/ocaml/graphicsX11.mli
 
 
 %files ocamldoc
@@ -379,6 +368,36 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 
 
 %changelog
+* Thu Feb 27 2020 Richard W.M. Jones <rjones@redhat.com> - 4.10.0-2.fc33
+- Add dist tag.
+
+* Tue Feb 25 2020 Richard W.M. Jones <rjones@redhat.com> - 4.10.0-1
+- OCaml 4.10.0 final.
+
+* Wed Jan 29 2020 Fedora Release Engineering <releng@fedoraproject.org> - 4.10.0-0.beta1.0.1
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_32_Mass_Rebuild
+
+* Sat Jan 18 2020 Richard W.M. Jones <rjones@redhat.com> - 4.10.0-0.beta1
+- OCaml 4.10.0+beta1.
+
+* Tue Jan 07 2020 Richard W.M. Jones <rjones@redhat.com> - 4.09.0-13
+- Bump release and rebuild.
+
+* Tue Jan 07 2020 Richard W.M. Jones <rjones@redhat.com> - 4.09.0-4
+- OCaml 4.09.0 for riscv64
+
+* Tue Dec 10 2019 Richard W.M. Jones <rjones@redhat.com> - 4.09.0-3
+- Require redhat-rpm-config to get hardening flags when linking.
+
+* Thu Dec 05 2019 Richard W.M. Jones <rjones@redhat.com> - 4.09.0-2
+- OCaml 4.09.0 final.
+- Use autosetup, remove old setup line.
+- Remove ocamloptp binaries.
+- Rename target_camlheader[di] -> camlheader[di] files.
+- Remove vmthreads - old threading library which is no longer built.
+- Remove x11 subpackage which is obsolete.
+- Further fixes to CFLAGS and annobin.
+
 * Fri Aug 16 2019 Richard W.M. Jones <rjones@redhat.com> - 4.08.1-1
 - OCaml 4.08.1 final.
 

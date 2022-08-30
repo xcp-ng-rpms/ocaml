@@ -1,0 +1,217 @@
+From 862ad80a2538433d90d878893bb0d75e50cb8dcb Mon Sep 17 00:00:00 2001
+From: Xavier Leroy <xavierleroy@users.noreply.github.com>
+Date: Mon, 6 Dec 2021 10:05:44 +0100
+Subject: [PATCH] Free the alternate signal stack on termination
+
+Back-port PR#10726 and PR#10892 for 4.13. Free the alternate signal stack
+when the main OCaml code / an OCaml thread stops.
+---
+ Changes                                  |  9 ++++
+ otherlibs/systhreads/st_stubs.c          |  2 +
+ runtime/fail_nat.c                       |  7 +++-
+ runtime/signals_nat.c                    | 53 +++++++++++++++++++++++-
+ runtime/startup_nat.c                    |  7 +++-
+ runtime/sys.c                            |  5 +++
+ tools/ci/inria/sanitizers/lsan-suppr.txt |  2 -
+ 7 files changed, 80 insertions(+), 5 deletions(-)
+
+diff --git a/Changes b/Changes
+index deb5c53448a..56041ce4b17 100644
+--- a/Changes
++++ b/Changes
+@@ -1,3 +1,12 @@
++OCaml 4.13 maintenance branch
++-----------------------------
++
++### Bug fixes:
++
++- #10698, #10726, #10891: Free the alternate signal stack when the main OCaml
++  code or an OCaml thread stops.
++  (Xavier Leroy, review by David Allsopp, Florian Angeletti and Damien Doligez)
++
+ OCaml 4.13.1 (01 October 2021)
+ --------------------------------
+ 
+diff --git a/otherlibs/systhreads/st_stubs.c b/otherlibs/systhreads/st_stubs.c
+index d279a4d696a..0cc39ee0f47 100644
+--- a/otherlibs/systhreads/st_stubs.c
++++ b/otherlibs/systhreads/st_stubs.c
+@@ -132,6 +132,7 @@ static st_retcode caml_threadstatus_wait (value);
+ #ifdef NATIVE_CODE
+ extern struct longjmp_buffer caml_termination_jmpbuf;
+ extern void (*caml_termination_hook)(void);
++extern int caml_stop_stack_overflow_detection(void);
+ #endif
+ 
+ /* Hook for scanning the stacks of the other threads */
+@@ -548,6 +549,7 @@ static ST_THREAD_FUNCTION caml_thread_start(void * arg)
+     caml_thread_stop();
+ #ifdef NATIVE_CODE
+   }
++  caml_stop_stack_overflow_detection();
+ #endif
+   /* The thread now stops running */
+   return 0;
+diff --git a/runtime/fail_nat.c b/runtime/fail_nat.c
+index 352206f9a26..3ed4c638dbc 100644
+--- a/runtime/fail_nat.c
++++ b/runtime/fail_nat.c
+@@ -32,6 +32,8 @@
+ #include "caml/roots.h"
+ #include "caml/callback.h"
+ 
++extern void caml_terminate_signals(void);
++
+ /* The globals holding predefined exceptions */
+ 
+ typedef value caml_generated_constant[1];
+@@ -70,7 +72,10 @@ void caml_raise(value v)
+   if (Is_exception_result(v))
+     v = Extract_exception(v);
+ 
+-  if (Caml_state->exception_pointer == NULL) caml_fatal_uncaught_exception(v);
++  if (Caml_state->exception_pointer == NULL) {
++    caml_terminate_signals();
++    caml_fatal_uncaught_exception(v);
++  }
+ 
+   while (Caml_state->local_roots != NULL &&
+          (char *) Caml_state->local_roots < Caml_state->exception_pointer) {
+diff --git a/runtime/signals_nat.c b/runtime/signals_nat.c
+index 484553235e5..87de81b400a 100644
+--- a/runtime/signals_nat.c
++++ b/runtime/signals_nat.c
+@@ -286,6 +286,38 @@ void caml_init_signals(void)
+ #endif
+ }
+ 
++/* Termination of signal stuff */
++
++#if defined(TARGET_power) || defined(TARGET_s390x) \
++    || defined(HAS_STACK_OVERFLOW_DETECTION)
++static void set_signal_default(int signum)
++{
++  struct sigaction act;
++  sigemptyset(&act.sa_mask);
++  act.sa_handler = SIG_DFL;
++  act.sa_flags = 0;
++  sigaction(signum, &act, NULL);
++}
++#endif
++
++int caml_stop_stack_overflow_detection(void);
++
++void caml_terminate_signals(void)
++{
++#if defined(TARGET_power)
++  set_signal_default(SIGTRAP);
++#endif
++
++#if defined(TARGET_s390x)
++  set_signal_default(SIGFPE);
++#endif
++
++#ifdef HAS_STACK_OVERFLOW_DETECTION
++  set_signal_default(SIGSEGV);
++  caml_stop_stack_overflow_detection();
++#endif
++}
++
+ /* Allocate and select an alternate stack for handling signals,
+    especially SIGSEGV signals.
+    Each thread needs its own alternate stack.
+@@ -301,7 +333,26 @@ CAMLexport int caml_setup_stack_overflow_detection(void)
+   if (stk.ss_sp == NULL) return -1;
+   stk.ss_size = SIGSTKSZ;
+   stk.ss_flags = 0;
+-  return sigaltstack(&stk, NULL);
++  if (sigaltstack(&stk, NULL) == -1) {
++    free(stk.ss_sp);
++    return -1;
++  }
++#endif
++  /* Success (or stack overflow detection not available) */
++  return 0;
++}
++
++CAMLexport int caml_stop_stack_overflow_detection(void)
++{
++#ifdef HAS_STACK_OVERFLOW_DETECTION
++  stack_t oldstk, stk;
++  stk.ss_flags = SS_DISABLE;
++  if (sigaltstack(&stk, &oldstk) == -1) return -1;
++  /* If caml_setup_stack_overflow_detection failed, we are not using
++     an alternate signal stack.  SS_DISABLE will be set in oldstk,
++     and there is nothing to free in this case. */
++  if (! (oldstk.ss_flags & SS_DISABLE)) free(oldstk.ss_sp);
++  return 0;
+ #else
+   return 0;
+ #endif
+diff --git a/runtime/startup_nat.c b/runtime/startup_nat.c
+index 0ff0b55214f..2c07dba0382 100644
+--- a/runtime/startup_nat.c
++++ b/runtime/startup_nat.c
+@@ -92,6 +92,7 @@ void (*caml_termination_hook)(void *) = NULL;
+ 
+ extern value caml_start_program (caml_domain_state*);
+ extern void caml_init_signals (void);
++extern void caml_terminate_signals(void);
+ #ifdef _WIN32
+ extern void caml_win32_overflow_detection (void);
+ #endif
+@@ -106,6 +107,7 @@ extern void caml_install_invalid_parameter_handler();
+ value caml_startup_common(char_os **argv, int pooling)
+ {
+   char_os * exe_name, * proc_self_exe;
++  value res;
+   char tos;
+ 
+   /* Initialize the domain */
+@@ -152,10 +154,13 @@ value caml_startup_common(char_os **argv, int pooling)
+     exe_name = caml_search_exe_in_path(exe_name);
+   caml_sys_init(exe_name, argv);
+   if (sigsetjmp(caml_termination_jmpbuf.buf, 0)) {
++    caml_terminate_signals();
+     if (caml_termination_hook != NULL) caml_termination_hook(NULL);
+     return Val_unit;
+   }
+-  return caml_start_program(Caml_state);
++  res = caml_start_program(Caml_state);
++  caml_terminate_signals();
++  return res;
+ }
+ 
+ value caml_startup_exn(char_os **argv)
+diff --git a/runtime/sys.c b/runtime/sys.c
+index 129f055e987..307292637a5 100644
+--- a/runtime/sys.c
++++ b/runtime/sys.c
+@@ -113,6 +113,8 @@ static void caml_sys_check_path(value name)
+   }
+ }
+ 
++extern void caml_terminate_signals(void);
++
+ CAMLexport void caml_do_exit(int retcode)
+ {
+   if ((caml_verb_gc & 0x400) != 0) {
+@@ -159,6 +161,9 @@ CAMLexport void caml_do_exit(int retcode)
+ #ifdef _WIN32
+   caml_restore_win32_terminal();
+ #endif
++#ifdef NATIVE_CODE
++  caml_terminate_signals();
++#endif
+ #ifdef NAKED_POINTERS_CHECKER
+   if (retcode == 0 && caml_naked_pointers_detected) {
+     fprintf (stderr, "\nOut-of-heap pointers were detected by the runtime.\n"
+diff --git a/tools/ci/inria/sanitizers/lsan-suppr.txt b/tools/ci/inria/sanitizers/lsan-suppr.txt
+index cc44e3edb21..160e7fc68b9 100644
+--- a/tools/ci/inria/sanitizers/lsan-suppr.txt
++++ b/tools/ci/inria/sanitizers/lsan-suppr.txt
+@@ -1,4 +1,2 @@
+ # ocamlyacc doesn't clean memory on exit
+ leak:ocamlyacc
+-# Alternate signal stacks are currently never freed (see #10266)
+-leak:caml_setup_stack_overflow_detection

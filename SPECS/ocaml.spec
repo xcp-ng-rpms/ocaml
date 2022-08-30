@@ -1,3 +1,8 @@
+%global package_speccommit f8b113238bcdc5fc1ed315bea81feab69330649d
+%global usver 4.13.1
+%global xsver 1
+%global xsrel %{xsver}%{?xscount}%{?xshash}
+
 # OCaml has a bytecode backend that works on anything with a C
 # compiler, and a native code backend available on a subset of
 # architectures.  A further subset of architectures support native
@@ -8,22 +13,20 @@
 
 # These are all the architectures that the tests run on.  The tests
 # take a long time to run, so don't run them on slow machines.
-%global test_arches aarch64 %{power64} x86_64
-%global test_arches aarch64 %{power64}
+%global test_arches aarch64 %{power64} riscv64 x86_64
 # These are the architectures for which the tests must pass otherwise
 # the build will fail.
-#%global test_arches_required aarch64 ppc64le x86_64
+#global test_arches_required aarch64 ppc64le x86_64
 %global test_arches_required NONE
 
 # Architectures where parallel builds fail.
-#%global no_parallel_build_arches aarch64
+#global no_parallel_build_arches aarch64
 
 %global rcver %{nil}
-#global rcver +rc2
 
 Name:           ocaml
-Version:        4.08.1
-Release:        2%{?dist}
+Version:        4.13.1
+Release:        %{?xsrel}%{?dist}
 
 Summary:        OCaml compiler and programming environment
 
@@ -31,18 +34,12 @@ License:        QPL and (LGPLv2+ with exceptions)
 
 URL:            http://www.ocaml.org
 
-
-Source0: https://repo.citrite.net/ctx-local-contrib/xs-opam/ocaml-4.08.1.tar.gz
-Patch1: SOURCES/ocaml/0001-Don-t-add-rpaths-to-libraries.patch
-Patch2: SOURCES/ocaml/0002-configure-Allow-user-defined-C-compiler-flags.patch
-Patch3: SOURCES/ocaml/0003-configure-Remove-incorrect-assumption-about-cross-co.patch
-Patch4: SOURCES/ocaml/0004-Add-RISC-V-backend.patch
-Patch5: SOURCES/ocaml/0005-riscv-Emit-debug-info.patch
-Patch6: SOURCES/ocaml/CA-308206.patch
-Patch7: SOURCES/ocaml/CA-335148.patch
-
-
-
+Source0: ocaml-4.13.1.tar.gz
+Patch0: 0001-Don-t-add-rpaths-to-libraries.patch
+Patch1: 0002-configure-Allow-user-defined-C-compiler-flags.patch
+Patch2: 0003-configure-Remove-incorrect-assumption-about-cross-co.patch
+Patch3: 0004-configure-Only-use-OC_-for-building-executables.patch
+Patch4: 0005-free-alt-signal-stack.patch
 
 # IMPORTANT NOTE:
 #
@@ -53,35 +50,24 @@ Patch7: SOURCES/ocaml/CA-335148.patch
 #
 # https://pagure.io/fedora-ocaml
 #
-# Current branch: fedora-32-4.08.1
+# Current branch: fedora-36-4.13.1
 #
 # ALTERNATIVELY add a patch to the end of the list (leaving the
 # existing patches unchanged) adding a comment to note that it should
 # be incorporated into the git repo at a later time.
 #
+# See patches/series
 
-# Fedora-specific downstream patches.
-# Out of tree patch for RISC-V support.
-# https://github.com/nojb/riscv-ocaml
-
+BuildRequires:  make
+BuildRequires:  git
 BuildRequires:  gcc
 BuildRequires:  autoconf
 BuildRequires:  binutils-devel
 BuildRequires:  ncurses-devel
 BuildRequires:  gdbm-devel
 BuildRequires:  gawk
-BuildRequires:  perl
-# Don't build graphics libraries
-# BuildRequires:  util-linux
-# BuildRequires:  libICE-devel
-# BuildRequires:  libSM-devel
-# BuildRequires:  libX11-devel
-# BuildRequires:  libXaw-devel
-# BuildRequires:  libXext-devel
-# BuildRequires:  libXft-devel
-# BuildRequires:  libXmu-devel
-# BuildRequires:  libXrender-devel
-# BuildRequires:  libXt-devel
+BuildRequires:  perl-interpreter
+BuildRequires:  util-linux
 BuildRequires:  chrpath
 
 Requires:       gcc
@@ -128,15 +114,7 @@ Summary:        Source code for OCaml libraries
 Requires:       ocaml = %{version}-%{release}
 
 %description source
-
-
-%package x11
-Summary:        X11 support for OCaml
-Requires:       ocaml-runtime = %{version}-%{release}
-Requires:       libX11-devel
-
-%description x11
-X11 support for OCaml.
+Source code for OCaml libraries.
 
 
 %package ocamldoc
@@ -176,8 +154,7 @@ may not be portable between versions.
 
 
 %prep
-%setup -q -T -b 0 -n %{name}-%{version}%{rcver}
-%autopatch -p1
+%autosetup -S git -n %{name}-%{version}%{rcver}
 # Patches touch configure.ac, so rebuild it:
 autoconf --force
 
@@ -195,9 +172,15 @@ make=make
 #
 # Force --host because of:
 # https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/thread/2O4HBOK6PTQZAFAVIRDVMZGG2PYB2QHM/
+# (see also https://github.com/ocaml/ocaml/issues/8647)
+#
+# OC_CFLAGS/OC_LDFLAGS control what flags OCaml passes to the linker
+# when doing final linking of OCaml binaries.
 %configure \
+    OC_CFLAGS="$CFLAGS" \
+    OC_LDFLAGS="$LDFLAGS" \
     --libdir=%{_libdir}/ocaml \
-    --host=`./config/gnu/config.guess`
+    --host=`./build-aux/config.guess`
 $make world
 %if %{native_compiler}
 $make opt
@@ -228,9 +211,9 @@ chrpath --delete $RPM_BUILD_ROOT%{_libdir}/ocaml/stublibs/*.so
 
 find $RPM_BUILD_ROOT -name .ignore -delete
 
-# Remove .cmt and .cmti files, for now.  We could package them later.
-# See also: http://www.ocamlpro.com/blog/2012/08/20/ocamlpro-and-4.00.0.html
-find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
+# Remove this file.  It's only created in certain situations and it's
+# unclear why it is created at all.
+rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %files
@@ -239,8 +222,6 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 
 %{_bindir}/ocamlcmt
 %{_bindir}/ocamldebug
-%{_bindir}/ocaml-instr-graph
-%{_bindir}/ocaml-instr-report
 %{_bindir}/ocamlyacc
 
 # symlink to either .byte or .opt version
@@ -284,8 +265,6 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_bindir}/ocamlopt.opt
 %endif
 
-#%{_libdir}/ocaml/addlabels
-#%{_libdir}/ocaml/scrapelabels
 %{_libdir}/ocaml/camlheader
 %{_libdir}/ocaml/camlheader_ur
 %{_libdir}/ocaml/expunge
@@ -304,9 +283,6 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %endif
 %{_libdir}/ocaml/*.mli
 %{_libdir}/ocaml/libcamlrun_shared.so
-%{_libdir}/ocaml/objinfo_helper
-%{_libdir}/ocaml/vmthreads/*.mli
-%{_libdir}/ocaml/vmthreads/*.a
 %{_libdir}/ocaml/threads/*.mli
 %if %{native_compiler}
 %{_libdir}/ocaml/threads/*.a
@@ -314,7 +290,6 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_libdir}/ocaml/threads/*.cmx
 %endif
 %{_libdir}/ocaml/caml
-# %exclude %{_libdir}/ocaml/graphicsX11.mli
 
 
 %files runtime
@@ -323,32 +298,23 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 %{_bindir}/ocamlrund
 %{_bindir}/ocamlruni
 %dir %{_libdir}/ocaml
-%{_libdir}/ocaml/VERSION
 %{_libdir}/ocaml/*.cmo
 %{_libdir}/ocaml/*.cmi
 %{_libdir}/ocaml/*.cma
+%{_libdir}/ocaml/camlheaderd
+%{_libdir}/ocaml/camlheaderi
 %{_libdir}/ocaml/stublibs
-%{_libdir}/ocaml/target_camlheaderd
-%{_libdir}/ocaml/target_camlheaderi
-%dir %{_libdir}/ocaml/vmthreads
-%{_libdir}/ocaml/vmthreads/*.cmi
-%{_libdir}/ocaml/vmthreads/*.cma
 %dir %{_libdir}/ocaml/threads
 %{_libdir}/ocaml/threads/*.cmi
 %{_libdir}/ocaml/threads/*.cma
 %{_libdir}/ocaml/fedora-ocaml-release
-# %exclude %{_libdir}/ocaml/graphicsX11.cmi
 
 
 %files source
 %doc LICENSE
 %{_libdir}/ocaml/*.ml
-
-
-%files x11
-%doc LICENSE
-# %{_libdir}/ocaml/graphicsX11.cmi
-# %{_libdir}/ocaml/graphicsX11.mli
+%{_libdir}/ocaml/*.cmt*
+%{_libdir}/ocaml/*/*.cmt*
 
 
 %files ocamldoc
@@ -379,6 +345,35 @@ find $RPM_BUILD_ROOT \( -name '*.cmt' -o -name '*.cmti' \) -a -delete
 
 
 %changelog
+* Tue Feb 01 2022 Pau Ruiz Safont <pau.safont@citrix.com> - 4.13.1-1
+- OCaml 4.13.1
+- Package *.cmt and *.cmti files.
+- Remove objinfo_helper since it is no longer built.
+- Use OC_* flags for building executables
+- CA-362344: Patch to free alternate signal stack per thread
+
+* Tue Jan 11 2022 Rob Hoes <rob.hoes@citrix.com> - 4.10.1-5
+- Bump release and rebuild
+
+* Mon Dec 06 2021 Rob Hoes <rob.hoes@citrix.com> - 4.10.1-4
+- Bump release and rebuild
+
+* Fri Dec 03 2021 Rob Hoes <rob.hoes@citrix.com> - 4.10.1-3
+- Bump release and rebuild
+
+* Fri Feb 26 2021 Rob Hoes <rob.hoes@citrix.com> - 4.10.1-2
+- Bump release and rebuild
+
+* Fri Dec 18 2020 Pau Ruiz Safont <pau.safont@citrix.com> - 4.10.1-1
+- OCaml 4.10.1
+- Use autosetup, instead of old setup line.
+- Rename target_camlheader[di] -> camlheader[di] files.
+- Remove vmthreads - old threading library which is no longer built.
+- Remove x11 subpackage which is obsolete.
+
+* Tue Nov 17 2020 Mark Syms <mark.syms@citrix.com> - 4.08.1-3
+- Packaging updates
+
 * Fri Aug 16 2019 Richard W.M. Jones <rjones@redhat.com> - 4.08.1-1
 - OCaml 4.08.1 final.
 

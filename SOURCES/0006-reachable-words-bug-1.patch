@@ -1,0 +1,21 @@
+From 7564c29b6fd35f0c1f3d6b238bb22a26eb92cf0f Mon Sep 17 00:00:00 2001
+From: Alain Frisch <alain@frisch>
+Date: Tue, 26 Oct 2021 22:42:54 +0200
+Subject: [PATCH] Fix performance bug in Obj.reachable
+
+---
+ runtime/extern.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/runtime/extern.c b/runtime/extern.c
+index 17a07981ea5..12d3c41e13e 100644
+--- a/runtime/extern.c
++++ b/runtime/extern.c
+@@ -1135,6 +1135,7 @@ CAMLprim value caml_obj_reachable_words(value v)
+   uintnat h = 0;
+   uintnat pos;
+ 
++  obj_counter = 0;
+   extern_init_position_table();
+   sp = extern_stack;
+   size = 0;

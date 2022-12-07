@@ -1,6 +1,6 @@
-%global package_speccommit f8b113238bcdc5fc1ed315bea81feab69330649d
+%global package_speccommit 57ca0301cc2373d44e21f3cc468114dbefaed5da
 %global usver 4.13.1
-%global xsver 1
+%global xsver 3
 %global xsrel %{xsver}%{?xscount}%{?xshash}
 
 # OCaml has a bytecode backend that works on anything with a C
@@ -40,6 +40,8 @@ Patch1: 0002-configure-Allow-user-defined-C-compiler-flags.patch
 Patch2: 0003-configure-Remove-incorrect-assumption-about-cross-co.patch
 Patch3: 0004-configure-Only-use-OC_-for-building-executables.patch
 Patch4: 0005-free-alt-signal-stack.patch
+Patch5: 0006-reachable-words-bug-1.patch
+Patch6: 0007-reachable-words-bug-2.patch
 
 # IMPORTANT NOTE:
 #
@@ -345,6 +347,12 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %changelog
+* Tue Jul 12 2022 Pau Ruiz Safont <pau.safont@citrix.com> - 4.13.1-3
+- Bump release and rebuild
+
+* Tue Jul 12 2022 Pau Ruiz Safont <pau.safont@citrix.com> - 4.13.1-2
+- CP-40064: Fix bugs around Obj.reachable_words
+
 * Tue Feb 01 2022 Pau Ruiz Safont <pau.safont@citrix.com> - 4.13.1-1
 - OCaml 4.13.1
 - Package *.cmt and *.cmti files.

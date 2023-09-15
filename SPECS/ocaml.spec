@@ -1,7 +1,12 @@
-%global package_speccommit 57ca0301cc2373d44e21f3cc468114dbefaed5da
-%global usver 4.13.1
-%global xsver 3
+%global package_speccommit 814db0c7372942f23a6a81d98d8b0efb83af324b
+%global usver 4.14.1
+%global xsver 5
 %global xsrel %{xsver}%{?xscount}%{?xshash}
+
+# our RPM macros are old and don't define these,
+# and without it we wouldn't get a native compiler
+%global ocaml_native_compiler x86_64
+%global ocaml_natdynlink x86_64
 
 # OCaml has a bytecode backend that works on anything with a C
 # compiler, and a native code backend available on a subset of
@@ -10,6 +15,8 @@
 
 %global native_compiler 1
 %global natdynlink 1
+## Disable LTO if enabled by default
+%global _lto_cflags %nil
 
 # These are all the architectures that the tests run on.  The tests
 # take a long time to run, so don't run them on slow machines.
@@ -17,7 +24,7 @@
 # These are the architectures for which the tests must pass otherwise
 # the build will fail.
 #global test_arches_required aarch64 ppc64le x86_64
-%global test_arches_required NONE
+%global test_arches_required x86_64
 
 # Architectures where parallel builds fail.
 #global no_parallel_build_arches aarch64
@@ -25,23 +32,20 @@
 %global rcver %{nil}
 
 Name:           ocaml
-Version:        4.13.1
+Version:        4.14.1
 Release:        %{?xsrel}%{?dist}
 
 Summary:        OCaml compiler and programming environment
 
 License:        QPL and (LGPLv2+ with exceptions)
 
-URL:            http://www.ocaml.org
+URL:            https://www.ocaml.org
 
-Source0: ocaml-4.13.1.tar.gz
-Patch0: 0001-Don-t-add-rpaths-to-libraries.patch
-Patch1: 0002-configure-Allow-user-defined-C-compiler-flags.patch
-Patch2: 0003-configure-Remove-incorrect-assumption-about-cross-co.patch
-Patch3: 0004-configure-Only-use-OC_-for-building-executables.patch
-Patch4: 0005-free-alt-signal-stack.patch
-Patch5: 0006-reachable-words-bug-1.patch
-Patch6: 0007-reachable-words-bug-2.patch
+Source0: ocaml-4.14.1.tar.gz
+Patch0: 0022-Don-t-add-rpaths-to-libraries.patch
+Patch1: 0023-configure-Allow-user-defined-C-compiler-flags.patch
+Patch2: 0024-configure-Only-use-OC_-for-building-executables.patch
+Patch3: remove_unused_test_variable
 
 # IMPORTANT NOTE:
 #
@@ -52,7 +56,7 @@ Patch6: 0007-reachable-words-bug-2.patch
 #
 # https://pagure.io/fedora-ocaml
 #
-# Current branch: fedora-36-4.13.1
+# Current branch: fedora-38-4.14.0
 #
 # ALTERNATIVELY add a patch to the end of the list (leaving the
 # existing patches unchanged) adding a comment to note that it should
@@ -62,24 +66,36 @@ Patch6: 0007-reachable-words-bug-2.patch
 
 BuildRequires:  make
 BuildRequires:  git
-BuildRequires:  gcc
-BuildRequires:  autoconf
+%if 0%{?xenserver} < 9
+BuildRequires:  devtoolset-11-gcc devtoolset-11-binutils
+BuildRequires:  devtoolset-11-binutils-devel
+%else
+BuildRequires:  gcc binutils
 BuildRequires:  binutils-devel
+%endif
+BuildRequires:  autoconf
 BuildRequires:  ncurses-devel
 BuildRequires:  gdbm-devel
 BuildRequires:  gawk
 BuildRequires:  perl-interpreter
 BuildRequires:  util-linux
-BuildRequires:  chrpath
 
-Requires:       gcc
+# ocamlopt runs gcc to link binaries.  Because Fedora includes
+# hardening flags automatically, redhat-rpm-config is also required.
+%if 0%{?xenserver} < 9
+Requires:       devtoolset-11-gcc devtoolset-11-binutils
+Requires:       redhat-rpm-config
+%else
+Requires:       gcc binutils
+Requires:       xenserver-config-rpm
+%endif
 
 # Because we pass -c flag to ocaml-find-requires (to avoid circular
 # dependencies) we also have to explicitly depend on the right version
 # of ocaml-runtime.
 Requires:       ocaml-runtime = %{version}-%{release}
 
-# Bundles an MD5 implementation in byterun/md5.{c,h}
+# Bundles an MD5 implementation in runtime/{caml/md5.h,md5.c}
 Provides:       bundled(md5-plumb)
 
 Provides:       ocaml(compiler) = %{version}
@@ -122,7 +138,7 @@ Source code for OCaml libraries.
 %package ocamldoc
 Summary:        Documentation generator for OCaml
 Requires:       ocaml = %{version}-%{release}
-Provides:	ocamldoc
+Provides:	ocamldoc = %{version}
 
 %description ocamldoc
 Documentation generator for OCaml.
@@ -169,20 +185,30 @@ unset MAKEFLAGS
 make=make
 %endif
 
+%if 0%{?xenserver} < 9
+source /opt/rh/devtoolset-11/enable
+%endif
+
+# Don't use %%configure macro because it sets --build, --host which
+# breaks some incorrect assumptions made by OCaml's configure.ac
+#
+# See also:
+# https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/thread/2O4HBOK6PTQZAFAVIRDVMZGG2PYB2QHM/
+# https://github.com/ocaml/ocaml/issues/8647
+#
 # We set --libdir to the unusual directory because we want OCaml to
 # install its libraries and other files into a subdirectory.
 #
-# Force --host because of:
-# https://lists.fedoraproject.org/archives/list/devel@lists.fedoraproject.org/thread/2O4HBOK6PTQZAFAVIRDVMZGG2PYB2QHM/
-# (see also https://github.com/ocaml/ocaml/issues/8647)
-#
 # OC_CFLAGS/OC_LDFLAGS control what flags OCaml passes to the linker
 # when doing final linking of OCaml binaries.
-%configure \
+./configure \
+    --prefix=%{_prefix} \
+    --sysconfdir=%{_sysconfdir} \
+    --mandir=%{_mandir} \
+    --libdir=%{_libdir}/ocaml \
     OC_CFLAGS="$CFLAGS" \
     OC_LDFLAGS="$LDFLAGS" \
-    --libdir=%{_libdir}/ocaml \
-    --host=`./build-aux/config.guess`
+    %{nil}
 $make world
 %if %{native_compiler}
 $make opt
@@ -192,12 +218,15 @@ $make opt.opt
 
 %check
 %ifarch %{test_arches}
-cd testsuite
+make ocamltest
+%ifarch %{ocaml_native_compiler}
+make ocamltest.opt
+%endif
 
 %ifarch %{test_arches_required}
-make -j1 all
+make -j1 tests
 %else
-make -j1 all ||:
+make -j1 tests ||:
 %endif
 %endif
 
@@ -208,10 +237,8 @@ perl -pi -e "s|^$RPM_BUILD_ROOT||" $RPM_BUILD_ROOT%{_libdir}/ocaml/ld.conf
 
 echo %{version} > $RPM_BUILD_ROOT%{_libdir}/ocaml/fedora-ocaml-release
 
-# Remove rpaths from stublibs .so files.
-chrpath --delete $RPM_BUILD_ROOT%{_libdir}/ocaml/stublibs/*.so
-
-find $RPM_BUILD_ROOT -name .ignore -delete
+# Remove the installed documentation.  We will install it using %%doc
+rm -rf $RPM_BUILD_ROOT%{_docdir}/ocaml
 
 # Remove this file.  It's only created in certain situations and it's
 # unclear why it is created at all.
@@ -219,7 +246,7 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %files
-%doc LICENSE
+%license LICENSE
 %{_bindir}/ocaml
 
 %{_bindir}/ocamlcmt
@@ -270,7 +297,6 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 %{_libdir}/ocaml/camlheader
 %{_libdir}/ocaml/camlheader_ur
 %{_libdir}/ocaml/expunge
-%{_libdir}/ocaml/extract_crc
 %{_libdir}/ocaml/ld.conf
 %{_libdir}/ocaml/Makefile.config
 %{_libdir}/ocaml/*.a
@@ -295,7 +321,8 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %files runtime
-%doc README.adoc LICENSE Changes
+%doc README.adoc Changes
+%license LICENSE
 %{_bindir}/ocamlrun
 %{_bindir}/ocamlrund
 %{_bindir}/ocamlruni
@@ -313,14 +340,14 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %files source
-%doc LICENSE
+%license LICENSE
 %{_libdir}/ocaml/*.ml
 %{_libdir}/ocaml/*.cmt*
 %{_libdir}/ocaml/*/*.cmt*
 
 
 %files ocamldoc
-%doc LICENSE
+%license LICENSE
 %doc ocamldoc/Changes.txt
 %{_bindir}/ocamldoc*
 %{_libdir}/ocaml/ocamldoc
@@ -332,7 +359,7 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %files compiler-libs
-%doc LICENSE
+%license LICENSE
 %dir %{_libdir}/ocaml/compiler-libs
 %{_libdir}/ocaml/compiler-libs/*.mli
 %{_libdir}/ocaml/compiler-libs/*.cmi
@@ -347,6 +374,23 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %changelog
+* Fri Aug 11 2023 Lin.Liu <Lin.Liu01@cloud.com> - 4.14.1-5
+- CP-44254: Support builds on Xenserver 9
+
+* Mon Jul 17 2023 Edwin Török <edwin.torok@cloud.com> - 4.14.1-4
+- CA-375272: Use GCC 11 to build OCaml
+
+* Fri Jun 02 2023 Pau Ruiz Safont <pau.ruizsafont@cloud.com> - 4.14.1-2
+- Enforce tests to pass
+
+* Fri May 05 2023 Pau Ruiz Safont <pau.ruizsafont@cloud.com> - 4.14.1-1
+- Ocaml 4.14.1
+- Fix the Source0 URL
+- chrpath is no longer needed
+- Use the %%license macro
+- Build the test binaries so the tests will run
+- Sync patches with latest Fedora 38
+
 * Tue Jul 12 2022 Pau Ruiz Safont <pau.safont@citrix.com> - 4.13.1-3
 - Bump release and rebuild
 

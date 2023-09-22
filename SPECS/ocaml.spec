@@ -217,6 +217,9 @@ $make opt.opt
 
 
 %check
+%if 0%{?xenserver} < 9
+source /opt/rh/devtoolset-11/enable
+%endif
 %ifarch %{test_arches}
 make ocamltest
 %ifarch %{ocaml_native_compiler}

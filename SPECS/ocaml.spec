@@ -33,7 +33,7 @@
 
 Name:           ocaml
 Version:        4.14.1
-Release:        %{?xsrel}%{?dist}
+Release:        %{?xsrel}.1%{?dist}
 
 Summary:        OCaml compiler and programming environment
 
@@ -217,6 +217,9 @@ $make opt.opt
 
 
 %check
+%if 0%{?xenserver} < 9
+source /opt/rh/devtoolset-11/enable
+%endif
 %ifarch %{test_arches}
 make ocamltest
 %ifarch %{ocaml_native_compiler}
@@ -374,6 +377,9 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %changelog
+* Fri Sep 22 2023 Samuel Verschelde <stormi-xcp@ylix.fr> - 4.14.1-5.1
+- Use GCC 11 in %%check too.
+
 * Fri Aug 11 2023 Lin.Liu <Lin.Liu01@cloud.com> - 4.14.1-5
 - CP-44254: Support builds on Xenserver 9
 

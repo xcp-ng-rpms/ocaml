@@ -1,6 +1,6 @@
-%global package_speccommit 814db0c7372942f23a6a81d98d8b0efb83af324b
+%global package_speccommit cb177be50c66894dd9ac06e6d8d4d66d597273de
 %global usver 4.14.1
-%global xsver 5
+%global xsver 7
 %global xsrel %{xsver}%{?xscount}%{?xshash}
 
 # our RPM macros are old and don't define these,
@@ -37,7 +37,7 @@ Release:        %{?xsrel}%{?dist}
 
 Summary:        OCaml compiler and programming environment
 
-License:        QPL and (LGPLv2+ with exceptions)
+License:        LGPL-2.1-only WITH OCaml-LGPL-linking-exception
 
 URL:            https://www.ocaml.org
 
@@ -45,7 +45,11 @@ Source0: ocaml-4.14.1.tar.gz
 Patch0: 0022-Don-t-add-rpaths-to-libraries.patch
 Patch1: 0023-configure-Allow-user-defined-C-compiler-flags.patch
 Patch2: 0024-configure-Only-use-OC_-for-building-executables.patch
-Patch3: remove_unused_test_variable
+Patch3: 0025-Move-Win32-POSIX-error-code-conversion-to-runtime-win32-c.patch
+Patch4: 0026-caml_read_fd-and-caml_write_fd-no-longer-raise-exceptions.patch
+Patch5: 0027-Discard-buffered-data-if-flush-runs-into-a-permanent-non-recoverable-IO-error.patch
+Patch6: 0028-Changes-entry-for-12314.patch
+Patch7: remove_unused_test_variable
 
 # IMPORTANT NOTE:
 #
@@ -217,6 +221,9 @@ $make opt.opt
 
 
 %check
+%if 0%{?xenserver} < 9
+source /opt/rh/devtoolset-11/enable
+%endif
 %ifarch %{test_arches}
 make ocamltest
 %ifarch %{ocaml_native_compiler}
@@ -374,6 +381,14 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %changelog
+* Tue Dec 19 2023 Pau Ruiz Safont <pau.ruizsafont@cloud.com> - 4.14.1-7
+- CA-380523: Discard out_channel buffered data on permanent I/O error
+  backport from https://github.com/ocaml/ocaml/pull/12314
+
+* Fri Sep 22 2023 Pau Ruiz Safont <pau.ruizsafont@cloud.com> - 4.14.1-6
+- Update the license to reflect the one used starting from version 4.04
+- Enable gcc11 in %check on Xenserver 8
+
 * Fri Aug 11 2023 Lin.Liu <Lin.Liu01@cloud.com> - 4.14.1-5
 - CP-44254: Support builds on Xenserver 9
 

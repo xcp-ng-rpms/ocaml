@@ -1,0 +1,31 @@
+From 9f2649cea49bac5822111cc22a381467caada320 Mon Sep 17 00:00:00 2001
+From: Xavier Leroy <xavier.leroy@college-de-france.fr>
+Date: Thu, 15 Jun 2023 17:49:39 +0200
+Subject: [PATCH] Discard buffered data if flush runs into a permanent,
+ non-recoverable I/O error
+
+So that the out_channel can be reclaimed by finalization.
+---
+ runtime/io.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/runtime/io.c b/runtime/io.c
+index 1861d4b2dffb..96a7134b0c14 100644
+--- a/runtime/io.c
++++ b/runtime/io.c
+@@ -248,7 +248,14 @@ CAMLexport int caml_flush_partial(struct channel *channel)
+     written = caml_write_fd(channel->fd, channel->flags,
+                             channel->buff, towrite);
+     if (written == -1) {
+-      if (errno == EINTR) goto again; else caml_sys_io_error(NO_ARG);
++      if (errno == EINTR) goto again;
++      if (errno == EBADF || errno == EPIPE || errno == ECONNRESET) {
++        /* This is a permanent failure: retrying the flush later will not
++           make it go away.  Just discard the buffered data, so that
++           the finalizer can reclaim the channel. */
++        channel->curr = channel->buff;
++      }
++      caml_sys_io_error(NO_ARG);
+     }
+     channel->offset += written;
+     if (written < towrite)

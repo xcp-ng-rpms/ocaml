@@ -1,6 +1,6 @@
-%global package_speccommit cb177be50c66894dd9ac06e6d8d4d66d597273de
-%global usver 4.14.1
-%global xsver 7
+%global package_speccommit 00775147a9be798534276ca69f011f8a260c6a96
+%global usver 4.14.2
+%global xsver 1
 %global xsrel %{xsver}%{?xscount}%{?xshash}
 
 # our RPM macros are old and don't define these,
@@ -32,7 +32,7 @@
 %global rcver %{nil}
 
 Name:           ocaml
-Version:        4.14.1
+Version:        4.14.2
 Release:        %{?xsrel}%{?dist}
 
 Summary:        OCaml compiler and programming environment
@@ -41,15 +41,11 @@ License:        LGPL-2.1-only WITH OCaml-LGPL-linking-exception
 
 URL:            https://www.ocaml.org
 
-Source0: ocaml-4.14.1.tar.gz
+Source0: ocaml-4.14.2.tar.gz
 Patch0: 0022-Don-t-add-rpaths-to-libraries.patch
 Patch1: 0023-configure-Allow-user-defined-C-compiler-flags.patch
 Patch2: 0024-configure-Only-use-OC_-for-building-executables.patch
-Patch3: 0025-Move-Win32-POSIX-error-code-conversion-to-runtime-win32-c.patch
-Patch4: 0026-caml_read_fd-and-caml_write_fd-no-longer-raise-exceptions.patch
-Patch5: 0027-Discard-buffered-data-if-flush-runs-into-a-permanent-non-recoverable-IO-error.patch
-Patch6: 0028-Changes-entry-for-12314.patch
-Patch7: remove_unused_test_variable
+Patch3: remove_unused_test_variable
 
 # IMPORTANT NOTE:
 #
@@ -381,6 +377,13 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %changelog
+* Fri May 03 2024 Pau Ruiz Safont <pau.ruizsafont@cloud.com> - 4.14.2-1
+- OCaml 4.14.2
+
+* Fri May 03 2024 Pau Ruiz Safont <pau.ruizsafont@cloud.com> - 4.14.1-8
+- IH-569: Remove patches for discarding out_channels' buffered data,
+  they contained non-trivially solvable dangerous bugs
+
 * Tue Dec 19 2023 Pau Ruiz Safont <pau.ruizsafont@cloud.com> - 4.14.1-7
 - CA-380523: Discard out_channel buffered data on permanent I/O error
   backport from https://github.com/ocaml/ocaml/pull/12314

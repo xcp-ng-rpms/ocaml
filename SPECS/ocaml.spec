@@ -33,7 +33,7 @@
 
 Name:           ocaml
 Version:        4.14.2
-Release:        %{?xsrel}%{?dist}
+Release:        1.0.xcpng2.%{?xsrel}%{?dist}
 
 Summary:        OCaml compiler and programming environment
 
@@ -87,7 +87,7 @@ Requires:       devtoolset-11-gcc devtoolset-11-binutils
 Requires:       redhat-rpm-config
 %else
 Requires:       gcc binutils
-Requires:       xenserver-config-rpm
+Requires:       redhat-rpm-config
 %endif
 
 # Because we pass -c flag to ocaml-find-requires (to avoid circular
@@ -377,6 +377,10 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %changelog
+* Fri Oct 25 2024 Yann Dirson <yann.dirson@vates.tech> - 4.14.2-1.0.xcpng2
+- Almalinux9 build
+- Use redhat-rpm-config like in v8, not the non-public xenserver-config-rpm
+
 * Fri May 03 2024 Pau Ruiz Safont <pau.ruizsafont@cloud.com> - 4.14.2-1
 - OCaml 4.14.2
 

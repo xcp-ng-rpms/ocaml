@@ -1,6 +1,6 @@
-%global package_speccommit 00775147a9be798534276ca69f011f8a260c6a96
+%global package_speccommit 62fedcaca9143b4cbbdce827a53d47bd3bc55964
 %global usver 4.14.2
-%global xsver 1
+%global xsver 2
 %global xsrel %{xsver}%{?xscount}%{?xshash}
 
 # our RPM macros are old and don't define these,
@@ -33,7 +33,7 @@
 
 Name:           ocaml
 Version:        4.14.2
-Release:        %{?xsrel}%{?dist}
+Release: %{?xsrel}%{?dist}
 
 Summary:        OCaml compiler and programming environment
 
@@ -377,6 +377,10 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %changelog
+* Tue Jan 21 2025 XenServer Rebuild <rebuild@xenserver.com> - 4.14.2-2
+- CP-50033: Move ctx_metadata to https://code.citrite.net/projects/CICD/repos/metadata-defaults/browse/bitbucket/XSS
+- CP-53310: XenServer 9 rebuild
+
 * Fri May 03 2024 Pau Ruiz Safont <pau.ruizsafont@cloud.com> - 4.14.2-1
 - OCaml 4.14.2
 

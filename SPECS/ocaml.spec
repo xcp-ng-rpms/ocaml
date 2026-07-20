@@ -33,7 +33,7 @@
 
 Name:           ocaml
 Version:        4.14.4
-Release:        %{?xsrel}%{?dist}
+Release:        %{?xsrel}~newocaml.2%{?dist}
 
 Summary:        OCaml compiler and programming environment
 

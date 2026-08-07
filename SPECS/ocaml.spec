@@ -33,7 +33,7 @@
 
 Name:           ocaml
 Version:        4.14.2
-Release:        1.1.%{?xsrel}%{?dist}
+Release:        %{?xsrel}.2%{?dist}
 
 Summary:        OCaml compiler and programming environment
 
@@ -66,13 +66,8 @@ Patch3: remove_unused_test_variable
 
 BuildRequires:  make
 BuildRequires:  git
-%if 0%{?xenserver} < 9
-BuildRequires:  devtoolset-11-gcc devtoolset-11-binutils
-BuildRequires:  devtoolset-11-binutils-devel
-%else
-BuildRequires:  gcc binutils
+BuildRequires:  gcc, binutils
 BuildRequires:  binutils-devel
-%endif
 BuildRequires:  autoconf
 BuildRequires:  ncurses-devel
 BuildRequires:  gdbm-devel
@@ -82,13 +77,8 @@ BuildRequires:  util-linux
 
 # ocamlopt runs gcc to link binaries.  Because Fedora includes
 # hardening flags automatically, redhat-rpm-config is also required.
-%if 0%{?xenserver} < 9
-Requires:       devtoolset-11-gcc devtoolset-11-binutils
+Requires:       gcc, binutils
 Requires:       redhat-rpm-config
-%else
-Requires:       gcc binutils
-Requires:       redhat-rpm-config
-%endif
 
 # Because we pass -c flag to ocaml-find-requires (to avoid circular
 # dependencies) we also have to explicitly depend on the right version
@@ -185,10 +175,6 @@ unset MAKEFLAGS
 make=make
 %endif
 
-%if 0%{?xenserver} < 9
-source /opt/rh/devtoolset-11/enable
-%endif
-
 # Don't use %%configure macro because it sets --build, --host which
 # breaks some incorrect assumptions made by OCaml's configure.ac
 #
@@ -217,9 +203,6 @@ $make opt.opt
 
 
 %check
-%if 0%{?xenserver} < 9
-source /opt/rh/devtoolset-11/enable
-%endif
 %ifarch %{test_arches}
 make ocamltest
 %ifarch %{ocaml_native_compiler}
@@ -377,6 +360,10 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/ocaml/eventlog_metadata
 
 
 %changelog
+* Tue Jul 21 2026 Yann Dirson <yann.dirson@vates.tech> - 4.14.2-1.2
+- Drop compatibility with XCP-ng/XS 8.x
+- Stop using space as separator in BuildRequires and Requires
+
 * Fri Oct 25 2024 Yann Dirson <yann.dirson@vates.tech> - 4.14.2-1.1
 - Almalinux9 build
 - Use redhat-rpm-config like in v8, not the non-public xenserver-config-rpm
